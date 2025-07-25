@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO Object Detection with TensorFlow.js</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        #video, #canvas {
+            display: block;
+            margin: 20px auto;
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <h1>Real-time Object Detection</h1>
+    <video id="video" autoplay muted></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let model;
+        let classLabels = []; // To be loaded from metadata or hardcoded
+
+        // Function to load the model
+        async function loadYOLOModel() {
+            console.log('Loading model...');
+            // Adjust the path to your converted model files
+            model = await tf.loadGraphModel('./path_to_your_converted_model/model.json');
+            console.log('Model loaded!');
+
+            // Warm up the model with dummy input
+            const dummyInput = tf.zeros(model.inputs[0].shape);
+            await model.executeAsync(dummyInput);
+            dummyInput.dispose();
+        }
+
+        // Function to start webcam and detection
+        async function startWebcam() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                detectFrame();
+            } else {
+                console.error('Webcam not supported.');
+            }
+        }
+
+        // Function to preprocess the image for the model
+        function preprocess(source) {
+            return tf.tidy(() => {
+                const img = tf.browser.fromPixels(source).toFloat();
+                // YOLO models often expect specific input sizes (e.g., 640x640)
+                // and letterbox padding might be needed for optimal results.
+                // This example uses simple resize.
+                const resized = tf.image.resizeBilinear(img, [model.inputs[0].shape[1], model.inputs[0].shape[2]]);
+                const normalized = resized.div(255.0); // Normalize to [0, 1]
+                const expanded = normalized.expandDims(0); // Add batch dimension
+                return expanded;
+            });
+        }
+
+        // Function to post-process the model output
+        // This part is crucial and highly depends on the specific YOLO version and its output structure.
+        // You'll need to parse the raw tensor output into bounding boxes, scores, and class IDs.
+        async function postprocessOutput(predictions) {
+            // This is a simplified example. Real YOLO post-processing involves:
+            // 1. Reshaping and decoding the raw prediction tensor
+            // 2. Applying sigmoid to confidence and class scores
+            // 3. Calculating bounding box coordinates (x, y, width, height)
+            // 4. Applying non-max suppression (NMS) to remove overlapping boxes
+            //    tf.image.nonMaxSuppressionAsync is very useful here.
+
+            // The structure of the 'predictions' tensor depends on the YOLO model.
+            // For YOLOv8, it might be a single tensor like [1, 5, num_boxes]
+            // (batch, num_attributes_per_box, num_boxes) or [1, num_boxes, 5+num_classes].
+            // You'll need to refer to the specific YOLO model's output format.
+
+            // Example (highly generalized - you'll need to adapt this to your YOLO output):
+            const output = predictions[0]; // Assuming single output tensor
+            const [boxes, scores, classIds] = tf.tidy(() => {
+                // Example: if output is [1, num_boxes, 5 + num_classes]
+                // const reshapedOutput = output.squeeze();
+                // const rawBoxes = reshapedOutput.slice([0, 0], [-1, 4]); // x,y,w,h
+                // const rawScores = reshapedOutput.slice([0, 4], [-1, 1]); // confidence
+                // const rawClassScores = reshapedOutput.slice([0, 5], [-1, classLabels.length]); // class probabilities
+
+                // For YOLOv8, the output might be like [1, 84, 8400] where 84 = 4 (coords) + 1 (conf) + 79 (classes)
+                // You would then transpose and slice this to get boxes, scores, and classes.
+                // Consult specific YOLOvX documentation/examples for exact post-processing.
+
+                // Placeholder for actual YOLO post-processing
+                return [tf.zeros([1, 4]), tf.scalar(0.9), tf.scalar(0)]; // Dummy values
+            });
+
+            // Perform Non-Max Suppression (NMS)
+            const maxScores = scores.max(1); // Get max score for each box across classes
+            const detections = await tf.image.nonMaxSuppressionAsync(
+                boxes,
+                maxScores,
+                100, // maxDetections
+                0.5, // iouThreshold
+                0.5  // scoreThreshold
+            );
+
+            const chosenBoxes = detections.arraySync().map(i => boxes.arraySync()[i]);
+            const chosenScores = detections.arraySync().map(i => scores.arraySync()[i]);
+            const chosenClassIds = detections.arraySync().map(i => classIds.arraySync()[i]);
+
+            boxes.dispose();
+            scores.dispose();
+            classIds.dispose();
+            detections.dispose();
+
+            return { boxes: chosenBoxes, scores: chosenScores, classIds: chosenClassIds };
+        }
+
+
+        // Function to draw bounding boxes
+        function drawBoxes(detections) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            detections.boxes.forEach((box, i) => {
+                const [x1, y1, x2, y2] = box; // YOLO output might be centerX, centerY, width, height, convert to x1, y1, x2, y2
+                const score = detections.scores[i];
+                const classId = detections.classIds[i];
+                const label = classLabels[classId] || `Class ${classId}`;
+
+                ctx.strokeStyle = '#00FF00'; // Green
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+                ctx.fillStyle = '#00FF00';
+                const text = `${label}: ${Math.round(score * 100)}%`;
+                ctx.font = '16px Arial';
+                ctx.fillText(text, x1, y1 > 10 ? y1 - 5 : y1 + 15);
+            });
+        }
+
+        // Main detection loop
+        async function detectFrame() {
+            if (model) {
+                const inputTensor = preprocess(video);
+                const predictions = await model.executeAsync(inputTensor);
+                const detections = await postprocessOutput(predictions);
+
+                drawBoxes(detections);
+
+                // Dispose of tensors to free up memory
+                inputTensor.dispose();
+                predictions.forEach(p => p.dispose());
+            }
+            requestAnimationFrame(detectFrame); // Continue the loop
+        }
+
+        // Initialize
+        async function init() {
+            await loadYOLOModel();
+            // You might load class labels from a separate file or embed them
+            // Example: classLabels = ['person', 'bicycle', 'car', ...];
+            classLabels = ["your_class_1", "your_class_2"]; // IMPORTANT: Update with your trained classes
+
+            startWebcam();
+        }
+
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+# Node.js dependencies
+/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# Python/YOLO training artifacts (if these are generated in your web app's directory)
+# Usually, these live in your Colab/Python project, but adding them just in case.
+# The actual TF.js model files (model.json and .bin) in your 'models/' directory
+# are generally included, as they are part of the deployable web app.
+runs/
+weights/
+*.pt  # PyTorch model weights
+*.onnx # ONNX intermediate format
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build artifacts (if you use a bundler like Webpack, Parcel, Rollup, Vite)
+/dist
+/build
+.parcel-cache/
+
+# Vite specific
+.vite/ # Vite cache directory
+
+# Editor/IDE specific files
+.vscode/        # VS Code settings
+.idea/          # IntelliJ IDEA settings
+*.sublime-project
+*.sublime-workspace
+
+# Operating System Files
+.DS_Store       # macOS
+Thumbs.db       # Windows
+ehthumbs.db
+.directory
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+~*
+
+# Other common temporary or cache files
+.cache/
+.eslintcache
