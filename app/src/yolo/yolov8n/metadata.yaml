@@ -1,0 +1,51 @@
+description: Ultralytics best model trained on /content/Dunkin-Inventory-4/data.yaml
+author: Ultralytics
+date: '2025-07-24T18:20:00.059618'
+version: 8.3.169
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: AppleFritter
+  1: Blueberry-donut
+  2: Blueberry-muffin
+  3: Blueberry-munchkin
+  4: BostonStar-donut
+  5: Capital-donut
+  6: Chocolate-munchkin
+  7: ChocolateFrost-donut
+  8: ChocolateFrostSprinkle-donut
+  9: CinnamonRaisin-bagel
+  10: CoffeeCake-muffin
+  11: CoffeeRoll
+  12: Corn-muffin
+  13: Donuts
+  14: DoubleChoc-donut
+  15: Everything-bagel
+  16: Frechcrueller-donut
+  17: Glaze-donut
+  18: Glaze-munchkin
+  19: GlazedChoc-donut
+  20: JellyStar-donut
+  21: Kremestar-donut
+  22: MapleFrost-donut
+  23: Multigrain-Bagel
+  24: OldFashion-donut
+  25: PieApple
+  26: Plain-bagel
+  27: Sesame-bagel
+  28: Sourcream
+  29: Starspangle-donut
+  30: Strawberry-donut
+  31: Vanilla-donut
+args:
+  batch: 1
+  half: false
+  int8: false
+  nms: false
+channels: 3

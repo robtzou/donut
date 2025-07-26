@@ -29,7 +29,7 @@
         async function loadYOLOModel() {
             console.log('Loading model...');
             // Adjust the path to your converted model files
-            model = await tf.loadGraphModel('./path_to_your_converted_model/model.json');
+            model = await tf.loadGraphModel('./models/my_yolo_model/model.json');
             console.log('Model loaded!');
 
             // Warm up the model with dummy input
