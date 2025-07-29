@@ -5,6 +5,8 @@ yarn-debug.log*
 yarn-error.log*
 .npm
 
+.DS_Store
+
 # Node.js dependencies
 node_modules/
 npm-debug.log*

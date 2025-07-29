@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YOLOv8n Object Detection with TensorFlow.js</title>
+    <title>YOLOv8n Image Object Detection Test</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <style>
         body {
@@ -16,16 +16,26 @@
         h1 {
             color: #333;
         }
-        #container {
+        #controls {
+            margin-bottom: 20px;
+        }
+        #fileInput {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #canvasContainer {
             position: relative;
             width: fit-content;
             margin: 20px auto;
             border: 2px solid #ccc;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            background-color: #fff;
         }
-        #video, #canvas {
+        #canvas {
             display: block;
-            width: 100%; /* Make them fill the container */
+            max-width: 100%;
             height: auto;
         }
         #status {
@@ -40,22 +50,36 @@
         .success-message {
             color: green;
         }
+        /* Hidden image element, used for loading but not displayed */
+        #hiddenImage {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <h1>Real-time Object Detection (YOLOv8n)</h1>
+    <h1>YOLOv8n Image Object Detection Test</h1>
+
+    <div id="controls">
+        <input type="file" id="fileInput" accept="image/*">
+    </div>
+
     <div id="status">Loading model...</div>
-    <div id="container">
-        <video id="video" autoplay muted playsinline></video>
+
+    <div id="canvasContainer">
         <canvas id="canvas"></canvas>
     </div>
 
+    <img id="hiddenImage" style="display: none;">
+
     <script>
-        const video = document.getElementById('video');
+        const fileInput = document.getElementById('fileInput');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const statusDiv = document.getElementById('status');
+        const hiddenImage = document.getElementById('hiddenImage'); // Used to load image data
+
         let model;
+
         // IMPORTANT: Ensure this order matches your model's training classes
         const classLabels = [
             'AppleFritter', 'Blueberry-donut', 'Blueberry-muffin', 'Blueberry-munchkin',
@@ -65,30 +89,27 @@
             'Frechcrueller-donut', 'Glaze-donut', 'Glaze-munchkin', 'GlazedChoc-donut',
             'JellyStar-donut', 'Kremestar-donut', 'MapleFrost-donut', 'Multigrain-Bagel',
             'OldFashion-donut', 'PieApple', 'Plain-bagel', 'Sesame-bagel',
-            'Sourcream', 'Starspangle-donut', 'Strawberry-donut', 'Vanilla-donut'
+            'Sourcream', 'Starspangle-donut', 'Strawberry-donut', 'Vanilladonut'
         ];
 
         // Model parameters (adjust if your YOLOv8n has different output/input sizes)
-        // YOLOv8n typically uses 640x640 input, and outputs a tensor for each stride.
-        // If your converted model combines these into one output, that's what we target.
         const INPUT_SIZE = 640; // Default YOLOv8 input size
         const NUM_CLASSES = classLabels.length;
         const IOU_THRESHOLD = 0.45; // Intersection over Union threshold for NMS
-        const SCORE_THRESHOLD = 0.25; // Confidence score threshold for detection filtering
+        const SCORE_THRESHOLD = 0.01; // Confidence score threshold for detection filtering
         const MAX_DETECTIONS = 100; // Maximum number of detections after NMS
 
         // Function to load the model
         async function loadYOLOModel() {
             statusDiv.textContent = 'Loading model... This might take a moment.';
             try {
-                // Adjust the path to your converted model files
                 model = await tf.loadGraphModel('src/models/my_yolo_model/model.json');
-                statusDiv.textContent = 'Model loaded successfully! Starting webcam...';
+                statusDiv.textContent = 'Model loaded successfully! Upload an image to start detection.';
                 statusDiv.classList.add('success-message');
 
                 console.log('Model loaded!');
-                console.log('Model input shape:', model.inputs[0].shape); // Should be [1, 640, 640, 3] for YOLOv8
-                console.log('Model output shape(s):', model.outputs.map(o => o.shape)); // Should be like [1, 84, 8400] for YOLOv8
+                console.log('Model input shape:', model.inputs[0].shape);
+                console.log('Model output shape(s):', model.outputs.map(o => o.shape));
 
                 // Warm up the model with dummy input
                 const dummyInput = tf.zeros(model.inputs[0].shape);
@@ -103,61 +124,24 @@
             }
         }
 
-        // Function to start webcam and detection
-        async function startWebcam() {
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                    video.srcObject = stream;
-                    await new Promise((resolve) => {
-                        video.onloadedmetadata = () => {
-                            // Set canvas dimensions to match video
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            resolve();
-                        };
-                    });
-                    statusDiv.textContent = 'Webcam started. Detecting objects...';
-                    detectFrame(); // Start the detection loop
-                } catch (error) {
-                    console.error('Error accessing webcam:', error);
-                    statusDiv.textContent = `Error: Webcam not accessible. Make sure you grant permission and are on HTTPS/localhost.`;
-                    statusDiv.classList.add('error-message');
-                }
-            } else {
-                console.error('Webcam not supported.');
-                statusDiv.textContent = 'Error: Your browser does not support webcam access or is not on a secure origin (HTTPS/localhost).';
-                statusDiv.classList.add('error-message');
-            }
-        }
-
         // Function to preprocess the image for the model
         function preprocess(source) {
             return tf.tidy(() => {
                 const img = tf.browser.fromPixels(source).toFloat();
-                // Resize to the model's expected input size (e.g., 640x640)
-                // tf.image.resizeBilinear expects [height, width]
                 const resized = tf.image.resizeBilinear(img, [INPUT_SIZE, INPUT_SIZE]);
-                const normalized = resized.div(255.0); // Normalize to [0, 1]
-                const expanded = normalized.expandDims(0); // Add batch dimension (1 for single image)
+                const normalized = resized.div(255.0);
+                const expanded = normalized.expandDims(0);
                 return expanded;
             });
         }
 
         // Function to post-process the model output for YOLOv8
         async function postprocessOutput(predictions) {
-            // YOLOv8n converted via SavedModel typically outputs a single tensor
-            // with shape [1, num_attributes, num_boxes]
-            // where num_attributes = 4 (coords) + 1 (objectness) + NUM_CLASSES
-            // and num_boxes is usually 8400 for 640x640 input.
-
             if (!predictions || predictions.length === 0) {
                 console.warn("No predictions received from model.");
                 return { boxes: [], scores: [], classIds: [] };
             }
 
-            // If model.executeAsync returns an array of tensors, take the first one.
-            // If model.executeAsync returns a single tensor directly, use it.
             const outputTensor = Array.isArray(predictions) ? predictions[0] : predictions;
 
             if (!outputTensor || outputTensor.shape.length !== 3) {
@@ -167,47 +151,43 @@
                 return { boxes: [], scores: [], classIds: [] };
             }
 
-            console.log("Raw output tensor shape:", outputTensor.shape); // Should be e.g., [1, 84, 8400] for YOLOv8n
+            console.log("Raw output tensor shape:", outputTensor.shape);
 
-            // Transpose the tensor from [1, num_attributes, num_boxes] to [1, num_boxes, num_attributes]
-            // This makes it easier to slice out boxes, scores, and classes per box.
-            const transposedOutput = tf.transpose(outputTensor, [0, 2, 1]).squeeze([0]); // Remove batch dim after transpose for easier slicing
+            const transposedOutput = tf.transpose(outputTensor, [0, 2, 1]).squeeze([0]);
 
-            // Debugging the transposed shape
-            console.log("Transposed and squeezed output shape:", transposedOutput.shape); // Should be e.g., [8400, 84]
+            console.log("Transposed and squeezed output shape:", transposedOutput.shape);
 
             const [num_boxes, num_attributes] = transposedOutput.shape;
             const num_coords = 4; // x, y, width, height
 
-            // Ensure num_attributes is correct (4 coords + 1 objectness + num_classes)
-            if (num_attributes !== (num_coords + 1 + NUM_CLASSES)) {
-                console.error(`Mismatch in attributes: Expected ${num_coords + 1 + NUM_CLASSES}, got ${num_attributes}`);
-                statusDiv.textContent = `Error: Model attributes mismatch. Check NUM_CLASSES.`;
-                statusDiv.classList.add('error-message');
-                transposedOutput.dispose();
-                return { boxes: [], scores: [], classIds: [] };
-            }
+            // --- IMPORTANT: Adjust this condition based on your actual model's attributes ---
+            // If your model has 4 coords + 1 objectness + NUM_CLASSES, it should be 4 + 1 + NUM_CLASSES
+            // If your model has 4 coords + NUM_CLASSES (objectness combined or not explicit), it should be 4 + NUM_CLASSES
+            // Check your console for 'Transposed and squeezed output shape: [8400, XXX]' to find XXX
+            // if (num_attributes !== (num_coords + 1 + NUM_CLASSES)) { // Assuming 4 coords + 1 objectness + NUM_CLASSES
+            //     console.error(`Mismatch in attributes: Expected ${num_coords + NUM_CLASSES}, got ${num_attributes}`);
+            //     statusDiv.textContent = `Error: Model attributes mismatch. Expected ${num_coords + 1 + NUM_CLASSES}, got ${num_attributes}. Please check NUM_CLASSES or post-processing logic.`;
+            //     statusDiv.classList.add('error-message');
+            //     transposedOutput.dispose();
+            //     return { boxes: [], scores: [], classIds: [] };
+            // }
 
             const decoded_detections = tf.tidy(() => {
-                // Slice out components
-                const rawBoxes = transposedOutput.slice([0, 0], [num_boxes, num_coords]); // [num_boxes, 4] (x_c, y_c, w, h)
-                const objectnessScores = transposedOutput.slice([0, num_coords], [num_boxes, 1]).squeeze(); // [num_boxes]
-                const classScores = transposedOutput.slice([0, num_coords + 1], [num_boxes, NUM_CLASSES]); // [num_boxes, NUM_CLASSES]
+                const rawBoxes = transposedOutput.slice([0, 0], [num_boxes, num_coords]);
+                const objectnessScores = transposedOutput.slice([0, num_coords], [num_boxes, 1]).squeeze();
+                const classScores = transposedOutput.slice([0, num_coords], [num_boxes, NUM_CLASSES]);
 
-                // Apply sigmoid to objectness and class scores
                 const sigmoidObjectness = tf.sigmoid(objectnessScores);
                 const sigmoidClassScores = tf.sigmoid(classScores);
 
-                // Multiply objectness with class scores to get final detection scores
-                // This combines the confidence that an object exists with the probability of its class
-                const scores = sigmoidObjectness.expandDims(1).mul(sigmoidClassScores); // [num_boxes, NUM_CLASSES]
+                const scores = sigmoidObjectness.expandDims(1).mul(sigmoidClassScores);
 
-                // Convert (x_center, y_center, width, height) to (x1, y1, x2, y2)
                 const x_center = rawBoxes.slice([0, 0], [num_boxes, 1]);
                 const y_center = rawBoxes.slice([0, 1], [num_boxes, 1]);
                 const width = rawBoxes.slice([0, 2], [num_boxes, 1]);
                 const height = rawBoxes.slice([0, 3], [num_boxes, 1]);
 
+                // Convert to x1, y1, x2, y2 format relative to INPUT_SIZE
                 const x1 = x_center.sub(width.div(2));
                 const y1 = y_center.sub(height.div(2));
                 const x2 = x_center.add(width.div(2));
@@ -218,34 +198,31 @@
                 return { boxes, scores };
             });
 
-            // Perform Non-Max Suppression (NMS)
-            const [maxScores, classIds] = tf.topk(decoded_detections.scores, 1, true); // Get max score and its class ID for each box
-            const reshapedMaxScores = maxScores.squeeze(); // [num_boxes]
+            const { values: maxScores, indices: classIds } = tf.topk(decoded_detections.scores, 1, true);
+            const reshapedMaxScores = maxScores.squeeze();
 
-            // Debugging shapes before NMS
             console.log("Boxes shape for NMS:", decoded_detections.boxes.shape);
             console.log("Scores shape for NMS:", reshapedMaxScores.shape);
 
             const selectedIndices = await tf.image.nonMaxSuppressionAsync(
                 decoded_detections.boxes,
                 reshapedMaxScores,
-                MAX_DETECTIONS, // maxDetections
-                IOU_THRESHOLD,  // iouThreshold
-                SCORE_THRESHOLD // scoreThreshold
+                MAX_DETECTIONS,
+                IOU_THRESHOLD,
+                SCORE_THRESHOLD
             );
 
             const selectedBoxes = tf.gather(decoded_detections.boxes, selectedIndices);
             const selectedScores = tf.gather(reshapedMaxScores, selectedIndices);
             const selectedClassIds = tf.gather(classIds.squeeze(), selectedIndices);
 
-            // Clean up intermediate tensors
             decoded_detections.boxes.dispose();
             decoded_detections.scores.dispose();
             transposedOutput.dispose();
             maxScores.dispose();
             classIds.dispose();
             selectedIndices.dispose();
-            outputTensor.dispose(); // Dispose of the original model output tensor
+            outputTensor.dispose();
 
             return {
                 boxes: selectedBoxes.arraySync(),
@@ -254,19 +231,19 @@
             };
         }
 
-        // Function to draw bounding boxes
-        function drawBoxes(detections) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            // Draw the video frame
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // Function to draw bounding boxes on the canvas
+        function drawBoxes(detections, originalImage) {
+            // Set canvas size to match the original image
+            canvas.width = originalImage.naturalWidth;
+            canvas.height = originalImage.naturalHeight;
 
-            // Scale factor from model input size to canvas size
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+
             const scaleX = canvas.width / INPUT_SIZE;
             const scaleY = canvas.height / INPUT_SIZE;
 
             detections.boxes.forEach((box, i) => {
-                // Boxes are in [y1, x1, y2, x2] format from NMS
-                // Need to scale them back to original video dimensions
                 const y1 = box[0] * scaleY;
                 const x1 = box[1] * scaleX;
                 const y2 = box[2] * scaleY;
@@ -282,46 +259,66 @@
 
                 ctx.fillStyle = '#00FFFF';
                 const text = `${label}: ${Math.round(score * 100)}%`;
-                ctx.font = '18px Arial'; // Slightly larger font for readability
-                // Adjust text position to ensure it's visible within or above the box
+                ctx.font = '18px Arial';
                 const textX = x1;
-                const textY = y1 > 20 ? y1 - 8 : y1 + 25; // Place above if space, else below
+                const textY = y1 > 20 ? y1 - 8 : y1 + 25;
 
                 ctx.fillText(text, textX, textY);
             });
+            statusDiv.textContent = `Detected ${detections.boxes.length} objects.`;
         }
 
-        // Main detection loop
-        async function detectFrame() {
-            if (model && video.readyState === 4) { // Ensure video is ready
-                tf.engine().startScope(); // Isolate tensor operations
-                const inputTensor = preprocess(video);
-                const predictions = await model.executeAsync(inputTensor);
+        // Main image detection function
+        async function detectImage(imgElement) {
+            if (!model) {
+                statusDiv.textContent = 'Model not loaded. Please wait.';
+                return;
+            }
+
+            statusDiv.textContent = 'Processing image...';
+            tf.engine().startScope();
+            try {
+                const inputTensor = preprocess(imgElement);
+                const predictions = await model.executeAsync(inputTensor); // You can change to .execute() once stable
 
                 const detections = await postprocessOutput(predictions);
-                drawBoxes(detections);
+                drawBoxes(detections, imgElement);
 
-                // Dispose of tensors to free up memory outside of tf.tidy
-                // Note: Tensors created inside tf.tidy are auto-disposed.
-                // We dispose of inputTensor and the raw predictions here.
                 inputTensor.dispose();
                 if (Array.isArray(predictions)) {
                     predictions.forEach(p => p.dispose());
                 } else {
                     predictions.dispose();
                 }
-                tf.engine().endScope(); // End the scope, disposing all tensors created within it
+            } catch (error) {
+                console.error('Error during detection:', error);
+                statusDiv.textContent = `Error during detection: ${error.message}. Check console.`;
+                statusDiv.classList.add('error-message');
+            } finally {
+                tf.engine().endScope();
             }
-            requestAnimationFrame(detectFrame); // Continue the loop
         }
 
-        // Initialize
+        // Event listener for file input
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                hiddenImage.onload = () => {
+                    detectImage(hiddenImage);
+                };
+                hiddenImage.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Initialize model loading on page load
         async function init() {
             await loadYOLOModel();
-            // Only start webcam if model loaded successfully
-            if (model) {
-                startWebcam();
-            }
         }
 
         init();
